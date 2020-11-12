@@ -1,8 +1,15 @@
 # Add required imports
 import numpy as np
 import matplotlib.pyplot as plt
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+import tensorflow as tf
+from copy import deepcopy
 
 def create_book_example(n=1000):
+    """bementei szinuiszborzalom generálása
+    ezt majd felváltja az igazi adatok beolvasása
+    ez így a #1 TODO"""
     # sample uniformly over the interval (0,1)
     X = np.random.uniform(0., 1., (n,1)).astype(np.float32)
     # target values
@@ -11,89 +18,23 @@ def create_book_example(n=1000):
     x_test = np.linspace(0, 1, n).reshape(-1, 1).astype(np.float32)
     return X, y, x_test
 
+"""bemenet generálása és kirajzolása"""
 X, y, x_test = create_book_example(n=4000)
-plt.plot(X, y, 'ro', alpha=0.04)
-plt.show()
-
-import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-import tensorflow as tf
-from copy import deepcopy
-
-def get_model(h=16, lr=0.001):
-    input = tf.keras.layers.Input(shape=(1,))
-    x = tf.keras.layers.Dense(h, activation='tanh')(input)
-    x = tf.keras.layers.Dense(1, activation=None)(x)
-
-    model = tf.keras.models.Model(input, x)
-    # Use Adam optimizer
-    model.compile(optimizer=tf.keras.optimizers.Adam(lr=lr), loss='mse', metrics=['acc'])
-#     model.compile(loss='mean_squared_error', optimizer='sgd')
-    return model
-
-# Load and train the network
-model = get_model(h=50)
-epochs=1000
-# Change verbosity (e.g verbose=1) to view the training progress
-history = model.fit(X, y, epochs=epochs, verbose=0)
-print('Final loss: {}'.format(history.history['loss'][-1]))
-# Plot the loss history
-plt.plot(range(epochs), history.history['loss'])
-plt.xlabel('Epochs')
-plt.ylabel('Loss')
-plt.title('Training')
-plt.show()
-
-
-y_test = model.predict(x_test)
-plt.plot(X, y, 'ro', alpha=0.05, label='train')
-plt.plot(x_test, y_test, 'bo', alpha=0.3, label='test')
-plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
-plt.title('Plot train and test data')
-plt.show()
-
-
-
-
-
+flipped_x = deepcopy(y)
+flipped_y = deepcopy(X)
+plt.plot(flipped_x, flipped_y, 'ro', alpha=0.04)
+plt.show() # bemeneti sinus kirajzolasa
 
 print(X.shape, y.shape)
 
-# Deepcopy is not required in this case
-# (its more of a habit for me)
-flipped_x = deepcopy(y)
-flipped_y = deepcopy(X)
 
-# load and train the model
-model = get_model(lr=0.09)
-
-# Train the model for large number of epochs
-epochs=1500
-history = model.fit(flipped_x, flipped_y, epochs=epochs, verbose=0)
-print(history.history['loss'][-1])
-plt.plot(range(epochs), history.history['loss'])
-plt.xlabel('Epochs')
-plt.ylabel('Loss')
-plt.title('Training')
-plt.show()
-
-
-x_test_inv = np.linspace(0., 1., 4000).reshape(-1, 1)
-y_test_inv = model.predict(x_test_inv)
-
-plt.plot(y, X, 'ro', alpha=0.05)
-plt.plot(x_test_inv, y_test_inv, 'b.', alpha=0.3)
-plt.show()
-
-
-
-
-
+"""Itt hozzuk létre a MDN networkot"""
+# In our toy example, we have single input feature
 l = 1
 # Number of gaussians to represent the multimodal distribution
 k = 26
 
-# Network
+# Mixture Density Network
 input = tf.keras.Input(shape=(l,))
 layer = tf.keras.layers.Dense(50, activation='tanh', name='baselayer')(input)
 mu = tf.keras.layers.Dense((l * k), activation=None, name='mean_layer')(layer)
@@ -108,16 +49,18 @@ optimizer = tf.keras.optimizers.Adam()
 model.summary()
 
 def calc_pdf(y, mu, var):
-    """Calculate component density"""
+    """Calculate component density
+    matekozás
+    a kimeneti gauszok kiértékelése"""
     value = tf.subtract(y, mu)**2
     value = (1/tf.math.sqrt(2 * np.pi * var)) * tf.math.exp((-1/(2*var)) * value)
     return value
 
-
 def mdn_loss(y_true, pi, mu, var):
     """MDN Loss Function
-    The eager mode in tensorflow 2.0 makes is extremely easy to write
-    functions like these. It feels a lot more pythonic to me.
+    Ezt majd olyanra kell megírni, hogy SI predikcio kompatibilis legyen
+    lehet egy négyzetes legkisebb eltéréses függvény is jó
+    Ez alapján fog optimalizálni a network a betanításkor
     """
     out = calc_pdf(y_true, mu, var)
     # multiply with each pi and sum it
@@ -134,9 +77,9 @@ def pdf_np(y, mu, var):
     n = np.exp((-(y-mu)**2)/(2*var))
     d = np.sqrt(2 * np.pi * var)
     return n/d
+"""Ellenőrzés, nem igazán vágom hogy pont itt mi van"""
 print('Numpy version: ')
 pdf_np(3.0, np.array([0.0, 0.1, 0.2]), np.array([1.0, 2.2, 3.3]))
-
 
 loss_value = mdn_loss(
     np.array([3.0, 1.1]).reshape(2,-1).astype('float64'),
@@ -144,10 +87,15 @@ loss_value = mdn_loss(
     np.array([[0.0, 0.1, 0.2], [0.0, 0.1, 0.2]]).reshape(2,-1).astype('float64'),
     np.array([[1.0, 2.2, 3.3], [1.0, 2.2, 3.3]]).reshape(2,-1).astype('float64')
 ).numpy()
-
 assert np.isclose(loss_value, 3.4714, atol=1e-5), 'MDN loss incorrect'
 
+"""
+itt kezdődik el a training
+ha jól sejtem itt csak megetetjük az adatokat vele
+és a későbbiekben sem kell sokat majd módosítani"""
+
 # Use Dataset API to load numpy data (load, shuffle, set batch size)
+# adatok betöltése
 N = flipped_x.shape[0]
 dataset = tf.data.Dataset \
     .from_tensor_slices((flipped_x, flipped_y)) \
@@ -155,6 +103,11 @@ dataset = tf.data.Dataset \
 
 
 def train_step(model, optimizer, train_x, train_y):
+    """tanítófüggvény lépése
+    beadunk adatokat,
+    loss-t számolunk
+    a loss mértéke alapján módosításokat végzünk a belső változókon
+    visszaadjuk a loss-t"""
     # GradientTape: Trace operations to compute gradients
     with tf.GradientTape() as tape:
         pi_, mu_, var_ = model(train_x, training=True)
@@ -166,7 +119,8 @@ def train_step(model, optimizer, train_x, train_y):
     return loss
 
 losses = []
-EPOCHS = 6000
+EPOCHS = 1500 #jó sokat tanítjuk, eredetileg 6000 volt, most hogy jobban fusson levettem 1500-ra
+"""epochs változót majd ki kéne tenni az elejére, hogy egy helyen legyenek módosíthatóak a fontos változók"""
 print_every = int(0.1 * EPOCHS)
 
 # Define model and optimizer
@@ -174,6 +128,8 @@ model = tf.keras.models.Model(input, [pi, mu, var])
 optimizer = tf.keras.optimizers.Adam()
 
 # Start training
+"""for ciklussal végigmegyünk az epoch-okon 
+használjuk a megírt loss és train_step függvényeinket"""
 print('Print every {} epochs'.format(print_every))
 for i in range(EPOCHS):
     for train_x, train_y in dataset:
@@ -182,12 +138,19 @@ for i in range(EPOCHS):
     if i % print_every == 0:
         print('Epoch {}/{}: loss {}'.format(i, EPOCHS, losses[-1]))
 
+"""kiértékelés... 
+a loss miért tart -1-hez?
+eredetiben is így volt, de na"""
 plt.plot(range(len(losses)), losses)
 plt.xlabel('Epochs')
 plt.ylabel('Loss')
 plt.title('Training loss')
 plt.show()
 
+"""Most jönnek a predikciók
+ehhez a részhez gondolom azért részben hozzá kéne nyúlni,
+ha máshoz nem, legalább a kirajzoláshoz, 
+hogy van-e értelme a plottolásnak SI predikció esetén is"""
 def approx_conditional_mode(pi, var, mu):
     """Approx conditional mode
     Because the conditional mode for MDN does not have simple analytical
@@ -250,4 +213,4 @@ patches = [
 ]
 
 plt.legend(handles=patches)
-plt.show()
+plt.show()    
