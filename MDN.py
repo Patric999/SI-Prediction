@@ -4,25 +4,56 @@ import matplotlib.pyplot as plt
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import tensorflow as tf
-from copy import deepcopy
+import csv
 
-def create_book_example(n=1000):
-    """bementei szinuiszborzalom generálása
-    ezt majd felváltja az igazi adatok beolvasása
-    ez így a #1 TODO"""
-    # sample uniformly over the interval (0,1)
-    X = np.random.uniform(0., 1., (n,1)).astype(np.float32)
-    # target values
-    y = X + 0.3 * np.sin(2 * np.pi * X) + np.random.uniform(-0.1, 0.1, size=(n,1)).astype(np.float32)
-    # test data
-    x_test = np.linspace(0, 1, n).reshape(-1, 1).astype(np.float32)
-    return X, y, x_test
+with open('E:\Asztal cuccok 2020.09.29\EÜ. 2.Félév\Önlab 2\SI-Prediction\data\data\dataSIP1_M1.csv') as csvfile:
+    readCSV = csv.reader(csvfile, delimiter=',')
+    Sim1 = []
+    Si = []
+    Sip1 = []
 
-"""bemenet generálása és kirajzolása"""
-X, y, x_test = create_book_example(n=4000)
-flipped_x = deepcopy(y)
-flipped_y = deepcopy(X)
-plt.plot(flipped_x, flipped_y, 'ro', alpha=0.04)
+    for row in readCSV:
+        Sim1.append(row[0])
+        Si.append(row[1])
+        Sip1.append(row[2])
+
+    Sim1.pop(0)
+    Si.pop(0)
+    Sip1.pop(0)
+
+    for i in range(len(Sim1)):
+        Sim1[i] = float(Sim1[i])
+        Si[i] = float(Si[i])
+        Sip1[i] = float(Sip1[i])
+
+
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+
+# Grab some test data.
+X_scatter = np.array(Sim1[0:1000]).astype(np.float32)
+Y_scatter = np.array(Si[0:1000]).astype(np.float32)
+Z_scatter = np.array(Sip1[0:1000]).astype(np.float32)
+
+ax.set_xlabel('SI-1')
+ax.set_ylabel('SI')
+ax.set_zlabel('SI+1')
+# Plot a basic wireframe.
+ax.scatter(X_scatter, Y_scatter, Z_scatter)
+
+plt.show()
+
+
+
+X = np.array(Si[0:1000]).astype(np.float32)
+y = np.array(Sip1[0:1000]).astype(np.float32)
+x_test = np.array(Si[4000:5000]).astype(np.float32)
+
+X = X.reshape(-1, 1)
+y = y.reshape(-1, 1)
+x_test = x_test.reshape(-1,1)
+
+plt.plot(X, y, 'ro', alpha=0.04)
 plt.show() # bemeneti sinus kirajzolasa
 
 print(X.shape, y.shape)
@@ -96,9 +127,9 @@ ha jól sejtem itt csak megetetjük az adatokat vele
 
 # Use Dataset API to load numpy data (load, shuffle, set batch size)
 # adatok betöltése
-N = flipped_x.shape[0]
+N = X.shape[0]
 dataset = tf.data.Dataset \
-    .from_tensor_slices((flipped_x, flipped_y)) \
+    .from_tensor_slices((X, y)) \
     .shuffle(N).batch(N)
 
 
@@ -178,7 +209,7 @@ preds = approx_conditional_mode(pi_vals, var_vals, mu_vals)
 
 # Plot along with training data
 fig = plt.figure(figsize=(8, 8))
-plt.plot(flipped_x, flipped_y, 'ro')
+plt.plot(X, y, 'ro')
 plt.plot(x_test, preds, 'g.')
 # plt.plot(flipped_x, preds2, 'b.')
 plt.show()
@@ -204,7 +235,7 @@ sampled_predictions = sample_predictions(pi_vals, mu_vals, var_vals, 10)
 import matplotlib.patches as mpatches
 
 fig = plt.figure(figsize=(6, 6))
-plt.plot(flipped_x, flipped_y, 'ro', label='train')
+plt.plot(X, y, 'ro', label='train')
 for i in range(sampled_predictions.shape[1]):
     plt.plot(x_test, sampled_predictions[:, i], 'g.', alpha=0.3, label='predicted')
 patches = [
