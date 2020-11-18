@@ -2,6 +2,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import tensorflow as tf
 import csv
@@ -26,7 +27,7 @@ with open('E:\Asztal cuccok 2020.09.29\EÜ. 2.Félév\Önlab 2\SI-Prediction\dat
         Si[i] = float(Si[i])
         Sip1[i] = float(Sip1[i])
 
-
+"""
 fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
 
@@ -42,33 +43,37 @@ ax.set_zlabel('SI+1')
 ax.scatter(X_scatter, Y_scatter, Z_scatter)
 
 plt.show()
+"""
 
+X = np.array([Si[0:3000],Sim1[0:3000]]).astype(np.float32)
+#X1 = np.array(Sim1[0:3000]).astype(np.float32)
+y = np.array(Sip1[0:3000]).astype(np.float32)
+x_test = np.array([Si[4000:5000],Sim1[4000:5000]]).astype(np.float32)
 
-
-X = np.array(Si[0:1000]).astype(np.float32)
-y = np.array(Sip1[0:1000]).astype(np.float32)
-x_test = np.array(Si[4000:5000]).astype(np.float32)
-
-X = X.reshape(-1, 1)
+X = X.reshape(-1, 2)
+#X1 = X1.reshape(-1, 1)
 y = y.reshape(-1, 1)
-x_test = x_test.reshape(-1,1)
+x_test = x_test.reshape(-1, 2)
 
+print(X.shape, y.shape,x_test.shape)
+"""
 plt.plot(X, y, 'ro', alpha=0.04)
 plt.show() # bemeneti sinus kirajzolasa
 
-print(X.shape, y.shape)
+print(X1.shape, y.shape)
 
-
+"""
 """Itt hozzuk létre a MDN networkot"""
 # In our toy example, we have single input feature
-l = 1
+l = 2
+
 # Number of gaussians to represent the multimodal distribution
-k = 26
+k = 10
 
 # Mixture Density Network
 input = tf.keras.Input(shape=(l,))
 layer = tf.keras.layers.Dense(50, activation='tanh', name='baselayer')(input)
-mu = tf.keras.layers.Dense((l * k), activation=None, name='mean_layer')(layer)
+mu = tf.keras.layers.Dense((k), activation=None, name='mean_layer')(layer)
 # variance (should be greater than 0 so we exponentiate it)
 var_layer = tf.keras.layers.Dense(k, activation=None, name='dense_var_layer')(layer)
 var = tf.keras.layers.Lambda(lambda x: tf.math.exp(x), output_shape=(k,), name='variance_layer')(var_layer)
@@ -79,13 +84,16 @@ model = tf.keras.models.Model(input, [pi, mu, var])
 optimizer = tf.keras.optimizers.Adam()
 model.summary()
 
+print(input.shape)
+
 def calc_pdf(y, mu, var):
     """Calculate component density
     matekozás
     a kimeneti gauszok kiértékelése"""
-    value = tf.subtract(y, mu)**2
-    value = (1/tf.math.sqrt(2 * np.pi * var)) * tf.math.exp((-1/(2*var)) * value)
+    value = tf.subtract(y, mu) ** 2
+    value = (1 / tf.math.sqrt(2 * np.pi * var)) * tf.math.exp((-1 / (2 * var)) * value)
     return value
+
 
 def mdn_loss(y_true, pi, mu, var):
     """MDN Loss Function
@@ -100,23 +108,28 @@ def mdn_loss(y_true, pi, mu, var):
     out = -tf.math.log(out + 1e-10)
     return tf.reduce_mean(out)
 
+
 # calc_pdf(3.0, 0.0, 1.0).numpy()
 calc_pdf(np.array([3.0]), np.array([0.0, 0.1, 0.2]), np.array([1.0, 2.2, 3.3])).numpy()
 
+
 # Numpy version
 def pdf_np(y, mu, var):
-    n = np.exp((-(y-mu)**2)/(2*var))
+    n = np.exp((-(y - mu) ** 2) / (2 * var))
     d = np.sqrt(2 * np.pi * var)
-    return n/d
+    return n / d
+
+
 """Ellenőrzés, nem igazán vágom hogy pont itt mi van"""
 print('Numpy version: ')
 pdf_np(3.0, np.array([0.0, 0.1, 0.2]), np.array([1.0, 2.2, 3.3]))
 
+
 loss_value = mdn_loss(
-    np.array([3.0, 1.1]).reshape(2,-1).astype('float64'),
-    np.array([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]]).reshape(2,-1).astype('float64'),
-    np.array([[0.0, 0.1, 0.2], [0.0, 0.1, 0.2]]).reshape(2,-1).astype('float64'),
-    np.array([[1.0, 2.2, 3.3], [1.0, 2.2, 3.3]]).reshape(2,-1).astype('float64')
+    np.array([3.0, 1.1]).reshape(2, -1).astype('float64'),
+    np.array([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]]).reshape(2, -1).astype('float64'),
+    np.array([[0.0, 0.1, 0.2], [0.0, 0.1, 0.2]]).reshape(2, -1).astype('float64'),
+    np.array([[1.0, 2.2, 3.3], [1.0, 2.2, 3.3]]).reshape(2, -1).astype('float64')
 ).numpy()
 assert np.isclose(loss_value, 3.4714, atol=1e-5), 'MDN loss incorrect'
 
@@ -127,6 +140,9 @@ ha jól sejtem itt csak megetetjük az adatokat vele
 
 # Use Dataset API to load numpy data (load, shuffle, set batch size)
 # adatok betöltése
+
+
+
 N = X.shape[0]
 dataset = tf.data.Dataset \
     .from_tensor_slices((X, y)) \
@@ -141,7 +157,9 @@ def train_step(model, optimizer, train_x, train_y):
     visszaadjuk a loss-t"""
     # GradientTape: Trace operations to compute gradients
     with tf.GradientTape() as tape:
+
         pi_, mu_, var_ = model(train_x, training=True)
+
         # calculate loss
         loss = mdn_loss(train_y, pi_, mu_, var_)
     # compute and apply gradients
@@ -149,8 +167,9 @@ def train_step(model, optimizer, train_x, train_y):
     optimizer.apply_gradients(zip(gradients, model.trainable_variables))
     return loss
 
+
 losses = []
-EPOCHS = 1500 #jó sokat tanítjuk, eredetileg 6000 volt, most hogy jobban fusson levettem 1500-ra
+EPOCHS = 1500  # jó sokat tanítjuk, eredetileg 6000 volt, most hogy jobban fusson levettem 1500-ra
 """epochs változót majd ki kéne tenni az elejére, hogy egy helyen legyenek módosíthatóak a fontos változók"""
 print_every = int(0.1 * EPOCHS)
 
@@ -182,6 +201,8 @@ plt.show()
 ehhez a részhez gondolom azért részben hozzá kéne nyúlni,
 ha máshoz nem, legalább a kirajzoláshoz, 
 hogy van-e értelme a plottolásnak SI predikció esetén is"""
+
+l=1
 def approx_conditional_mode(pi, var, mu):
     """Approx conditional mode
     Because the conditional mode for MDN does not have simple analytical
@@ -189,6 +210,7 @@ def approx_conditional_mode(pi, var, mu):
     at each value of x (PRML, page 277)
     """
     n, k = pi.shape
+
     out = np.zeros((n, l))
     # Get the index of max pi value for each row
     max_component = tf.argmax(pi, axis=1)
@@ -196,7 +218,7 @@ def approx_conditional_mode(pi, var, mu):
         # The mean value for this index will be used
         mc = max_component[i].numpy()
         for j in range(l):
-            out[i, j] = mu[i, mc*(l+j)]
+            out[i, j] = mu[i, mc * (l + j)]
     return out
 
 
@@ -207,11 +229,29 @@ pi_vals.shape, mu_vals.shape, var_vals.shape
 # Get mean of max(mixing coefficient) of each row
 preds = approx_conditional_mode(pi_vals, var_vals, mu_vals)
 
-# Plot along with training data
+"""# Plot along with training data
 fig = plt.figure(figsize=(8, 8))
 plt.plot(X, y, 'ro')
 plt.plot(x_test, preds, 'g.')
-# plt.plot(flipped_x, preds2, 'b.')
+plt.show()
+"""# plt.plot(flipped_x, preds2, 'b.')
+
+
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+
+X_scatter = X[:,0]
+Y_scatter = X[:,1]
+Z_scatter = y
+
+
+ax.set_xlabel('SI-1')
+ax.set_ylabel('SI')
+ax.set_zlabel('SI+1')
+# Plot a basic scatter.
+ax.scatter(x_test[:,0], x_test[:,1], preds,'g')
+ax.scatter(X_scatter, Y_scatter, Z_scatter,'ro',alpha=0.3)
+
 plt.show()
 
 
@@ -227,8 +267,9 @@ def sample_predictions(pi_vals, mu_vals, var_vals, samples=10):
             idx = np.random.choice(range(k), p=pi_vals[i])
             for li in range(l):
                 # Draw random sample from gaussian distribution
-                out[i,j,li] = np.random.normal(mu_vals[i, idx*(li+l)], np.sqrt(var_vals[i, idx]))
+                out[i, j, li] = np.random.normal(mu_vals[i, idx * (li + l)], np.sqrt(var_vals[i, idx]))
     return out
+
 
 sampled_predictions = sample_predictions(pi_vals, mu_vals, var_vals, 10)
 
@@ -244,4 +285,4 @@ patches = [
 ]
 
 plt.legend(handles=patches)
-plt.show()    
+plt.show()
